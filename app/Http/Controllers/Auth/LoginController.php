@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use Auth;
 use App\User;
+use Auth;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Session;
 
 class LoginController extends Controller
@@ -19,7 +19,7 @@ class LoginController extends Controller
     | redirecting them to your home screen. The controller uses a trait
     | to conveniently provide its functionality to your applications.
     |
-    */
+     */
 
     // use AuthenticatesUsers;
 
@@ -50,8 +50,7 @@ class LoginController extends Controller
         $code = $request->input('code');
         $firstname = $request->input('firstname');
         $lastname = $request->input('lastname');
-        $user = User::where('code',$code)->where('firstname',$firstname)->where('lastname',$lastname)->first();
-
+        $user = User::where('code', $code)->first();
 
         if ($user) {
             Auth::login($user);
@@ -75,7 +74,7 @@ class LoginController extends Controller
         $request->validate([
             $this->username() => 'required|integer',
             'lastname' => 'required|string',
-            'firstname' => 'required|string',
+            'firstname' => 'required|string'
         ]);
     }
 
@@ -116,7 +115,7 @@ class LoginController extends Controller
         $this->clearLoginAttempts($request);
 
         return $this->authenticated($request, $this->guard()->user())
-                ?: redirect()->intended($this->redirectPath());
+            ?: redirect()->intended($this->redirectPath());
     }
 
     public function username()
@@ -124,7 +123,8 @@ class LoginController extends Controller
         return 'code';
     }
 
-    public function logout() {
+    public function logout()
+    {
         Auth::logout();
         return redirect('/login');
     }

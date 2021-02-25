@@ -85,11 +85,11 @@
                 @endforeach
             @endif
 
-            <label for="lastname" class="mt-3">{{ __('Surname') }}</label>
+            {{-- <label for="lastname" class="mt-3">{{ __('Surname') }}</label>
             <input id="lastname" type="text" class="form-control" name="lastname" required>
 
             <label for="firstname" class="mt-3">{{ __('First Name') }}</label>
-            <input id="firstname" type="text" class="form-control" name="firstname" required>
+            <input id="firstname" type="text" class="form-control" name="firstname" required> --}}
 
             <label for="code" class="mt-3">{{ __('Examination Number') }}</label>
             <input id="code" type="number" class="form-control" name="code" required>

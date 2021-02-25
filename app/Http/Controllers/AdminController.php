@@ -3,24 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Admin;
-use Illuminate\Http\Request;
-use App\Subject;
 use App\Classes;
 use App\Exam;
-use App\Mark;
-use App\Question;
 use App\Option;
+use App\Question;
+use App\Subject;
 use App\User;
-use Gate;
-use DB;
 use Auth;
+use DB;
+use Gate;
+use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Auth as FacadesAuth;
 use Illuminate\Support\Facades\Hash;
-use PDF;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
-use Illuminate\Support\Str;
+use PDF;
 
 class AdminController extends Controller
 {
@@ -34,19 +30,18 @@ class AdminController extends Controller
         $this->middleware('auth:admins');
     }
 
-    public function dashboard() {
+    public function dashboard()
+    {
         // to authorize admin as the super admin
 
         $exams = [];
 
-        if (Gate::denies('superAdminGate')){
+        if (Gate::denies('superAdminGate')) {
             //Only return the subject of that user
-            $subjects = Auth::user()->subjects()->with('classes','subject')->get();
+            $subjects = Auth::user()->subjects()->with('classes', 'subject')->get();
             $classes = Classes::get();
             $all_started = Exam::whereIn('subject_id', Arr::pluck($subjects, 'subject_id'))->where('hasStarted', 1)->get();
-        }
-
-        else {
+        } else {
             $subjects = Subject::orderBy('subject_name')->get();
             $classes = Classes::get();
             //get all started exams
@@ -55,7 +50,7 @@ class AdminController extends Controller
 
         if (count($all_started) > 0) {
             foreach ($all_started as $exam) {
-                array_push($exams, ['id' => $exam->id, 'subject' => $exam->subject, 'class' => $exam->class]);
+                array_push($exams, ['id' => $exam->id, 'subject' => $exam->subject, 'classes' => $exam->classes]);
             }
         }
 
@@ -66,19 +61,20 @@ class AdminController extends Controller
         }
 
         $exams = json_encode($exams);
-
-        return view('admin.dashboard',compact('subjects','classes', 'exams'));
+        return view('admin.dashboard', compact('subjects', 'classes', 'exams'));
     }
 
-    public function getAllStudents() {
+    public function getAllStudents()
+    {
         $classes = Classes::with(['students' => function ($q) {
             $q->withTrashed()->orderBy('lastname');
-          }])->get();
+        }])->get();
 
         return view('admin.class-students', compact('classes'));
     }
 
-    public function updateStudent(Request $request,$id) {
+    public function updateStudent(Request $request, $id)
+    {
         $student = User::find($id);
 
         $firstname = $request->firstname;
@@ -89,56 +85,59 @@ class AdminController extends Controller
         $student->save();
         $message = "Details updated successfully";
 
-        return compact('student','message');
+        return compact('student', 'message');
     }
 
-    public function disableStudent($id) {
+    public function disableStudent($id)
+    {
         $student = User::find($id);
         $student->delete();
         $message = 'Student access disabled';
 
-        return compact('student','message');
+        return compact('student', 'message');
     }
 
-    public function deleteStudent($id) {
+    public function deleteStudent($id)
+    {
         $student = User::find($id);
         $student->forceDelete();
 
         return response()->json(['message' => 'Student deleted successfully']);
     }
 
-    public function restoreStudent($id) {
-        $student = User::onlyTrashed()->where('id',$id)->first();
+    public function restoreStudent($id)
+    {
+        $student = User::onlyTrashed()->where('id', $id)->first();
         $student->restore();
         $message = 'The selected student has succesfully been restored!';
 
-        return compact('student','message');
+        return compact('student', 'message');
     }
 
-    public function generateStudentCode($class_id) {
+    public function generateStudentCode($class_id)
+    {
         $characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
         $code = mt_rand(5111, 9999) . $characters[rand(0, strlen($characters) - 1)] . $characters[rand(0, strlen($characters) - 1)];
 
-        $check = User::where('class_id',$class_id)->where('code', $code)->first();
+        $check = User::where('class_id', $class_id)->where('code', $code)->first();
 
         //recursively check whether another student exists in that class with the same code
         if ($check) {
             return $this->generateStudentCode($class_id);
-        }
-
-        else {
+        } else {
             return $code;
         }
     }
 
-    public function addStudent(Request $request) {
+    public function addStudent(Request $request)
+    {
         $firstname = $request->firstname;
         $lastname = $request->lastname;
         $class_id = $request->class_id;
 
         $code = $this->generateStudentCode($class_id);
 
-        $student = new User;
+        $student = new User();
         $student->firstname = $firstname;
         $student->lastname = $lastname;
         $student->class_id = $class_id;
@@ -147,34 +146,37 @@ class AdminController extends Controller
 
         $message = "Student Added Successfully!";
 
-        return compact('student','message');
+        return compact('student', 'message');
     }
 
-    public function getAllQuestions($subject,$class_id) {
-        $subject = Subject::where('alias',$subject)->firstOrFail();
+    public function getAllQuestions($subject, $class_id)
+    {
+        $subject = Subject::where('alias', $subject)->firstOrFail();
         $current_class = $subject->classes()->where('class_id', $class_id)->firstOrFail();
 
         if (Gate::allows('view-subject-details', [$subject->id, $class_id])) {
             //Get the exam with the latest date, that is the current exam.
-            $exams = Exam::where('subject_id',$subject->id)->where('class_id',$class_id)->orderBy('date','desc')->orderBy('updated_at','desc')->with('subject','class')->get();
+            $exams = Exam::where('subject_id', $subject->id)->where('class_id', $class_id)->orderBy('date', 'desc')->orderBy('updated_at', 'desc')->with('subject', 'classes')->get();
             $classes = Auth::user()->isSuperAdmin() ? $subject->classes : $subject->adminSubjects()->where('admin_id', Auth::id())->first()->classes;
 
             if (count($exams) > 0) {
                 Session::put('exam_id', $exams[0]->id);
-            }
-            else {
+            } else {
                 Session::forget('exam_id');
             }
 
-            return view('admin.questions', compact('subject','class_id','current_class','classes','exams'));
+            return view('admin.questions', compact('subject', 'class_id', 'current_class', 'classes', 'exams'));
         }
 
-        return abort('404','Page does not exist');
+        return abort('404', 'Page does not exist');
     }
 
-    public function addQuestion(Request $request) {
+    public function addQuestion(Request $request)
+    {
         $question = $request->question;
         $options = $request->options;
+        $classId = $request->class_id;
+        $subjectId = $request->subject_id;
         $correctAnswer = $request->correct;
 
         // converts all special characters to utf-8
@@ -189,33 +191,35 @@ class AdminController extends Controller
 
         //loop over img elements, decode their base64 src and save them to public folder,
         //and then replace base64 src with stored image URL.
-        foreach($images as $k => $img){
+        foreach ($images as $k => $img) {
             $data = $img->getattribute('src');
-            if (strpos($data, 'data:image')!==false) {
+            if (strpos($data, 'data:image') !== false) {
                 list($type, $data) = explode(';', $data);
-                list(, $data)      = explode(',', $data);
+                list(, $data) = explode(',', $data);
 
                 $data = base64_decode($data);
-                $image_name= time().$k.'.png';
-                $path = public_path() .'/img/uploads/'. $image_name;
+                $image_name = time() . $k . '.png';
+                $path = public_path() . '/img/uploads/' . $image_name;
 
                 file_put_contents($path, $data);
 
                 $img->removeattribute('src');
-                $img->setattribute('src', '/img/uploads/'.$image_name);
+                $img->setattribute('src', '/img/uploads/' . $image_name);
             }
         }
 
         $question = $dom->savehtml();
 
-        $createdQuestion = new Question;
-        DB::transaction(function() use($question,$options,$correctAnswer, &$createdQuestion) {
+        $createdQuestion = new Question();
+        DB::transaction(function () use ($question, $options, $correctAnswer, $classId, $subjectId, &$createdQuestion) {
 
             $createdQuestion->exam_id = Session::get('exam_id');
+            $createdQuestion->class_id = $classId;
+            $createdQuestion->subject_id = $subjectId;
             $createdQuestion->question = $question;
             $createdQuestion->save();
 
-            foreach ($options as $key=>$option) {
+            foreach ($options as $key => $option) {
                 $option = mb_convert_encoding($option, 'HTML-ENTITIES', 'UTF-8');
                 $dom = new \domdocument('1.0', 'utf-8');
 
@@ -225,43 +229,43 @@ class AdminController extends Controller
 
                 $images = $dom->getelementsbytagname('img');
 
-
-                foreach($images as $k => $img){
+                foreach ($images as $k => $img) {
                     $data = $img->getattribute('src');
-                    if (strpos($data, 'data:image')!==false) {
+                    if (strpos($data, 'data:image') !== false) {
                         list($type, $data) = explode(';', $data);
-                        list(, $data)      = explode(',', $data);
+                        list(, $data) = explode(',', $data);
 
                         $data = base64_decode($data);
-                        $image_name= $key.time().$k.'.png';
-                        $path = public_path() .'/img/uploads/'. $image_name;
+                        $image_name = $key . time() . $k . '.png';
+                        $path = public_path() . '/img/uploads/' . $image_name;
 
                         file_put_contents($path, $data);
 
                         $img->removeattribute('src');
-                        $img->setattribute('src', '/img/uploads/'.$image_name);
+                        $img->setattribute('src', '/img/uploads/' . $image_name);
                     }
                 }
 
                 $option = $dom->savehtml();
 
-                $createdOption = new Option;
+                $createdOption = new Option();
                 $createdOption->body = $option;
-                $createdOption->isCorrect = ($correctAnswer == $key)?1:0;
+                $createdOption->isCorrect = ($correctAnswer == $key) ? 1 : 0;
 
                 $createdQuestion->options()->save($createdOption);
             }
         });
 
         $newQuestion = Question::where('id', $createdQuestion->id)->with('options')->first();
-        return response()->json(['question'=>$newQuestion, 'message'=>'Question Added Successfully!']);
+        return response()->json(['question' => $newQuestion, 'message' => 'Question Added Successfully!']);
     }
 
-    public function updateQuestion(Request $request, $id) {
+    public function updateQuestion(Request $request, $id)
+    {
         $question = $request->question;
         $options = $request->options;
         $correctAnswer = $request->correct;
-        $questionDB = Question::where('id',$id)->with('options')->first();
+        $questionDB = Question::where('id', $id)->with('options')->first();
 
         $question = mb_convert_encoding($question, 'HTML-ENTITIES', 'UTF-8');
         $dom = new \domdocument('1.0', 'utf-8');
@@ -274,28 +278,28 @@ class AdminController extends Controller
 
         //loop over img elements, decode their base64 src and save them to public folder,
         //and then replace base64 src with stored image URL.
-        foreach($images as $k => $img){
+        foreach ($images as $k => $img) {
             $data = $img->getattribute('src');
-            if (strpos($data, 'data:image')!==false){
+            if (strpos($data, 'data:image') !== false) {
                 list($type, $data) = explode(';', $data);
-                list(, $data)      = explode(',', $data);
+                list(, $data) = explode(',', $data);
 
                 $data = base64_decode($data);
-                $image_name= time().$k.$id.'.png';
-                $path = public_path() .'/img/uploads/'. $image_name;
+                $image_name = time() . $k . $id . '.png';
+                $path = public_path() . '/img/uploads/' . $image_name;
 
                 file_put_contents($path, $data);
 
                 $img->removeattribute('src');
-                $img->setattribute('src', asset('/img/uploads/'.$image_name));
+                $img->setattribute('src', asset('/img/uploads/' . $image_name));
             }
         }
 
         $question = $dom->savehtml();
 
-        DB::transaction(function() use($question,$options,$correctAnswer,&$questionDB) {
+        DB::transaction(function () use ($question, $options, $correctAnswer, &$questionDB) {
             $questionDB->update([
-                'question' => $question,
+                'question' => $question
             ]);
             foreach ($options as $key => $option) {
                 $optionFind = Option::find($option['id']);
@@ -310,77 +314,79 @@ class AdminController extends Controller
 
                 $images = $dom->getelementsbytagname('img');
 
-                foreach($images as $k => $img){
+                foreach ($images as $k => $img) {
                     $data = $img->getattribute('src');
-                    if (strpos($data, 'data:image')!==false){
+                    if (strpos($data, 'data:image') !== false) {
                         list($type, $data) = explode(';', $data);
-                        list(, $data)      = explode(',', $data);
+                        list(, $data) = explode(',', $data);
 
                         $data = base64_decode($data);
-                        $image_name= $key.time().$k.'.png';
-                        $path = public_path() .'/img/uploads/'. $image_name;
+                        $image_name = $key . time() . $k . '.png';
+                        $path = public_path() . '/img/uploads/' . $image_name;
 
                         file_put_contents($path, $data);
 
                         $img->removeattribute('src');
-                        $img->setattribute('src', '/img/uploads/'.$image_name);
+                        $img->setattribute('src', '/img/uploads/' . $image_name);
                     }
                 }
 
                 $option_body = $dom->savehtml();
 
                 $optionFind->body = $option_body;
-                $optionFind->isCorrect = ($correctAnswer == $key)?1:0;
+                $optionFind->isCorrect = ($correctAnswer == $key) ? 1 : 0;
                 $optionFind->save();
             }
 
             $questionDB->refresh();
         });
 
-        return response()->json(['question'=>$questionDB, 'message'=>'Question Updated Successfully!']);
+        return response()->json(['question' => $questionDB, 'message' => 'Question Updated Successfully!']);
 
     }
 
-    public function deleteQuestion($id) {
+    public function deleteQuestion($id)
+    {
         $question = Question::find($id);
         $question->delete();
 
-        return response()->json(['message'=>'Question Deleted Successfully!']);
+        return response()->json(['message' => 'Question Deleted Successfully!']);
     }
 
-    public function findOneQuestion(Request $request, $id) {
-        $question = Question::where('id',$id)->with('options')->get();
+    public function findOneQuestion(Request $request, $id)
+    {
+        $question = Question::where('id', $id)->with('options')->get();
 
         return response()->json($question[0]);
     }
 
-    public function getResults() {
+    public function getResults()
+    {
         $classes = Classes::get();
 
-        if(Gate::denies('superAdminGate')){
+        if (Gate::denies('superAdminGate')) {
             //Only return the subject of that user
             $subjects = Subject::where('id', Auth::user()->subject_id)->get();
-        }
-
-        else {
+        } else {
             $subjects = Subject::all();
         }
 
-        return view('admin.results',compact('subjects','classes'));
+        return view('admin.results', compact('subjects', 'classes'));
     }
 
-    public function getSingleResult(Request $request,$subject,$class_id) {
-        $subject = Subject::where('alias',$subject)->firstOrFail();
+    public function getSingleResult(Request $request, $subject, $class_id)
+    {
+        $subject = Subject::where('alias', $subject)->firstOrFail();
         $current_class = $subject->classes()->where('class_id', $class_id)->firstOrFail();
 
         if (Gate::allows('view-subject-details', [$subject->id, $class_id])) {
 
-            $students = User::where('class_id',$class_id)->orderBy('lastname')->get();
+            $students = User::where('class_id', $class_id)->orderBy('lastname')->get();
             $exams = $current_class->getAllExams($subject->id);
 
             $selected_exam = null;
             if ($request->date && $request->id) {
-                $selected_exam = Exam::where('id', $request->id)->where('subject_id',$subject->id)->where('class_id',$class_id)->where('date', $request->date)->has('scores')->first();
+                $selected_exam = Exam::where('id', $request->id)->where('subject_id', $subject->id)->where('class_id', $class_id)->where('date', $request->date)->has('scores')->first();
             }
 
             foreach ($students as $student) {
@@ -389,66 +395,68 @@ class AdminController extends Controller
 
             $classes = Auth::user()->isSuperAdmin() ? $subject->classes : $subject->adminSubjects()->where('admin_id', Auth::id())->first()->classes;
 
-            return view('admin.main-result',compact('students','subject','current_class','classes','exams','selected_exam'));
+            return view('admin.main-result', compact('students', 'subject', 'current_class', 'classes', 'exams', 'selected_exam'));
         }
 
-        return  abort('404');
+        return abort('404');
     }
 
-    public function downloadResult(Request $request, $subject,$class_id,$exam_id) {
-        $subject = Subject::where('alias',$subject)->firstOrFail();
+    public function downloadResult(Request $request, $subject, $class_id, $exam_id)
+    {
+        $subject = Subject::where('alias', $subject)->firstOrFail();
         $current_class = Classes::findOrFail($class_id);
 
         if (Gate::allows('view-subject-details', [$subject->id, $class_id])) {
 
-            $students = User::where('class_id',$class_id)->orderBy('lastname')->get();
+            $students = User::where('class_id', $class_id)->orderBy('lastname')->get();
             $exam = Exam::findOrFail($exam_id);
 
             foreach ($students as $student) {
                 $student->score = $student->getScore($exam->id);
             }
 
-            $data = compact('current_class','subject','students','exam');
+            $data = compact('current_class', 'subject', 'students', 'exam');
 
-            $pdf = PDF::loadView('admin.pdf-result',$data);
+            $pdf = PDF::loadView('admin.pdf-result', $data);
 
-            return $pdf->download(strtolower($subject->alias).'_'.strtolower($current_class->class).'_results.pdf');
+            return $pdf->download(strtolower($subject->alias) . '_' . strtolower($current_class->class) . '_results.pdf');
         }
 
         return abort('404');
     }
 
-    public function startExam(Request $request) {
+    public function startExam(Request $request)
+    {
         $subject_id = $request->subject_id;
         $class_id = $request->class_id;
         $today = date('Y-m-d');
-        $exam = Exam::where('subject_id',$subject_id)->where('class_id',$class_id)->where('hasStarted',0)->where('date', $today)->orderBy('updated_at','desc')->with('subject','class')->firstOrFail();
-
-
+        $exam = Exam::where('subject_id', $subject_id)->where('class_id', $class_id)->where('hasStarted', 0)->where('date', $today)->orderBy('updated_at', 'desc')->with('subject', 'classes')->firstOrFail();
         if (Gate::allows('view-subject-details', [$subject_id, $class_id])) {
             $exam->hasStarted = 1;
             $exam->save();
 
-            return response()->json(['exam' => $exam]) ;
+            return response()->json(['exam' => $exam]);
         }
 
         return abort('403');
     }
 
-    public function endExam(Request $request, $id) {
-        $exam = Exam::with('subject','class')->findOrFail($id);
+    public function endExam(Request $request, $id)
+    {
+        $exam = Exam::with('subject', 'classes')->findOrFail($id);
 
         if (Gate::allows('view-subject-details', [$exam->subject_id, $exam->class_id])) {
             $exam->hasStarted = 0;
             $exam->save();
 
-            return response()->json(['exam' => $exam]) ;
+            return response()->json(['exam' => $exam]);
         }
 
         return abort(403);
     }
 
-    public function createExam(Request $request) {
+    public function createExam(Request $request)
+    {
         $subject_id = $request->subject_id;
         $class_id = $request->class_id;
         $base_score = $request->base_score;
@@ -456,7 +464,7 @@ class AdminController extends Controller
         $minutes = $request->minutes;
         $date = $request->date;
 
-        $table = new Exam;
+        $table = new Exam();
         $table->class_id = $class_id;
         $table->subject_id = $subject_id;
         $table->base_score = $base_score;
@@ -465,14 +473,15 @@ class AdminController extends Controller
         $table->date = $date;
         $table->save();
 
-        $table->load('subject','class');
+        $table->load('subject', 'class');
 
         Session::put('exam_id', $table->id);
 
         return response()->json(['exam' => $table, 'message' => 'Exam created successfully']);
     }
 
-    public function updateExam(Request $request, $id) {
+    public function updateExam(Request $request, $id)
+    {
         $base_score = $request->base_score;
         $hours = $request->hours;
         $minutes = $request->minutes;
@@ -485,21 +494,23 @@ class AdminController extends Controller
         $table->date = $date;
         $table->save();
 
-        $table->load('subject','class');
+        $table->load('subject', 'class');
 
         return response()->json(['exam' => $table, 'message' => 'Settings updated successfully']);
     }
 
-
-    public function createExamFromTemplate(Request $request, $template_id) {
+    public function createExamFromTemplate(Request $request, $template_id)
+    {
 
         $number = $request->number;
 
-        DB::transaction(function() use($template_id,$number) {
+        DB::transaction(function () use ($template_id, $number) {
 
             $questions = Question::where('exam_id', $template_id)->with('options')->inRandomOrder()->get();
 
-            if ($number) $questions = $questions->take($number);
+            if ($number) {
+                $questions = $questions->take($number);
+            }
 
             foreach ($questions as $question) {
                 $newQuestion = Question::find($question->id)->replicate();
@@ -516,26 +527,28 @@ class AdminController extends Controller
             }
         });
 
-        $exam = Exam::with('subject','class')->find(Session::get('exam_id'));
+        $exam = Exam::with('subject', 'classes')->find(Session::get('exam_id'));
 
         return response()->json(['exam' => $exam, 'message' => 'Settings updated successfully']);
     }
 
-    public function getAccountPage() {
+    public function getAccountPage()
+    {
         return view('admin.manage-account');
     }
 
-    public function confirmPassword(Request $request) {
+    public function confirmPassword(Request $request)
+    {
         $check = Hash::check($request->password, Auth::user()->password);
 
         return response()->json(['valid' => $check]);
     }
 
-    public function updatePassword(Request $request) {
+    public function updatePassword(Request $request)
+    {
         $request->validate([
-            'password' => ['required', 'string'],
+            'password' => ['required', 'string']
         ]);
-
 
         $admin = Admin::find(Auth::id());
         $admin->password = bcrypt($request->password);

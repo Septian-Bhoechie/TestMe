@@ -12,10 +12,10 @@ class ClassesTableSeeder extends Seeder
      */
     public function run()
     {
-        for ($i=1; $i < 4; $i++) {
+        for ($i = 1; $i < 4; $i++) {
             DB::table('classes')->insert([
                 'id' => $i,
-                'class' => "Grade" . $i + 6
+                'class' => "Grade" . ($i + 6)
             ]);
         }
 
